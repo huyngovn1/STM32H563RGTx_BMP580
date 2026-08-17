@@ -1,0 +1,4 @@
+../Core/Src/bmp5_selftest.c:84:8:bmp5_selftest_check	7
+../Core/Src/bmp5_selftest.c:129:15:analyze_sensor_data	6
+../Core/Src/bmp5_selftest.c:183:15:set_config	7
+../Core/Src/bmp5_selftest.c:248:15:get_sensor_data	5
