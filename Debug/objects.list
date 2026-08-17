@@ -1,3 +1,4 @@
+"./Core/Src/bmm150.o"
 "./Core/Src/bmp5.o"
 "./Core/Src/bmp5_selftest.o"
 "./Core/Src/main.o"

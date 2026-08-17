@@ -19,10 +19,11 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "app_usbx.h"
-
+#include "bmm150.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "bmp5.h"
+#include "math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -68,6 +69,16 @@ static volatile uint8_t bmp580_spi_error_stage;
 static volatile uint8_t bmp580_spi_last_rx;
 static float bmp580_temperature_c;
 static float bmp580_pressure_pa;
+static float bmp580_altitude_m;
+static float bmp580_pressure_ref_pa = 101325.0f;
+static struct bmm150_dev bmm150_dev;
+static volatile int8_t bmm150_init_status;
+static volatile int8_t bmm150_read_status;
+static int16_t bmm150_x;
+static int16_t bmm150_y;
+static int16_t bmm150_z;
+static float bmm150_heading_deg;
+static uint8_t bmm150_read_divider;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -336,6 +347,183 @@ static int8_t BMP580_Read(float *temperature_c, float *pressure_pa)
 
     return rslt;
 }
+static void bmm150_spi_abort(void)
+{
+    LL_GPIO_SetOutputPin(CSB_MAG_GPIO_Port, CSB_MAG_Pin);
+    LL_SPI_Disable(SPI1);
+    bmp580_spi_clear_flags();
+}
+
+static int8_t bmm150_spi_start(uint32_t bytes)
+{
+    if ((bytes == 0U) || (bytes > 65535U))
+        return BMM150_E_COM_FAIL;
+
+    LL_SPI_Disable(SPI1);
+    bmp580_spi_clear_flags();
+    LL_SPI_SetTransferSize(SPI1, bytes);
+
+    LL_GPIO_SetOutputPin(CSB_GPIO_Port, CSB_Pin);
+    LL_GPIO_SetOutputPin(IMU_CS_GPIO_Port, IMU_CS_Pin);
+    LL_GPIO_SetOutputPin(GPIOC, IMU2_CS_Pin);
+
+    LL_GPIO_ResetOutputPin(CSB_MAG_GPIO_Port, CSB_MAG_Pin);
+
+    LL_SPI_Enable(SPI1);
+    LL_SPI_StartMasterTransfer(SPI1);
+
+    return BMM150_OK;
+}
+
+static int8_t bmm150_spi_finish(void)
+{
+    uint32_t timeout = BMP580_SPI_TIMEOUT;
+
+    while (!LL_SPI_IsActiveFlag_EOT(SPI1))
+    {
+        if (--timeout == 0U)
+        {
+            bmm150_spi_abort();
+            return BMM150_E_COM_FAIL;
+        }
+    }
+
+    LL_GPIO_SetOutputPin(CSB_MAG_GPIO_Port, CSB_MAG_Pin);
+    LL_SPI_ClearFlag_EOT(SPI1);
+    LL_SPI_ClearFlag_TXTF(SPI1);
+    LL_SPI_Disable(SPI1);
+
+    return BMM150_OK;
+}
+
+static BMM150_INTF_RET_TYPE bmm150_spi_read(uint8_t reg_addr,
+                                             uint8_t *data,
+                                             uint32_t len,
+                                             void *intf_ptr)
+{
+    uint8_t dummy;
+    uint32_t i;
+
+    (void)intf_ptr;
+
+    if ((data == NULL) || (len == 0U))
+        return BMM150_E_NULL_PTR;
+
+    if (bmm150_spi_start(len + 1U) != BMM150_OK)
+        return BMM150_E_COM_FAIL;
+
+    /* BMM150 library da tu them bit read 0x80 */
+    if (bmp580_spi_txrx_byte(reg_addr, &dummy) != 0)
+    {
+        bmm150_spi_abort();
+        return BMM150_E_COM_FAIL;
+    }
+
+    for (i = 0U; i < len; i++)
+    {
+        if (bmp580_spi_txrx_byte(0x00U, &data[i]) != 0)
+        {
+            bmm150_spi_abort();
+            return BMM150_E_COM_FAIL;
+        }
+    }
+
+    return bmm150_spi_finish();
+}
+
+static BMM150_INTF_RET_TYPE bmm150_spi_write(uint8_t reg_addr,
+                                              const uint8_t *data,
+                                              uint32_t len,
+                                              void *intf_ptr)
+{
+    uint8_t dummy;
+    uint32_t i;
+
+    (void)intf_ptr;
+
+    if ((data == NULL) || (len == 0U))
+        return BMM150_E_NULL_PTR;
+
+    if (bmm150_spi_start(len + 1U) != BMM150_OK)
+        return BMM150_E_COM_FAIL;
+
+    if (bmp580_spi_txrx_byte(reg_addr, &dummy) != 0)
+    {
+        bmm150_spi_abort();
+        return BMM150_E_COM_FAIL;
+    }
+
+    for (i = 0U; i < len; i++)
+    {
+        if (bmp580_spi_txrx_byte(data[i], &dummy) != 0)
+        {
+            bmm150_spi_abort();
+            return BMM150_E_COM_FAIL;
+        }
+    }
+
+    return bmm150_spi_finish();
+}
+
+static int8_t BMM150_Init(void)
+{
+    int8_t rslt;
+    struct bmm150_settings settings = {0};
+
+    LL_GPIO_SetOutputPin(CSB_MAG_GPIO_Port, CSB_MAG_Pin);
+
+    bmm150_dev.intf = BMM150_SPI_INTF;
+    bmm150_dev.read = bmm150_spi_read;
+    bmm150_dev.write = bmm150_spi_write;
+    bmm150_dev.delay_us = bmp580_delay_us;
+    bmm150_dev.intf_ptr = &bmm150_dev;
+
+    rslt = bmm150_init(&bmm150_dev);
+
+    if ((rslt != BMM150_OK) ||
+        (bmm150_dev.chip_id != BMM150_CHIP_ID))
+    {
+        return BMM150_E_DEV_NOT_FOUND;
+    }
+
+    settings.preset_mode = BMM150_PRESETMODE_REGULAR;
+    rslt = bmm150_set_presetmode(&settings, &bmm150_dev);
+    if (rslt != BMM150_OK)
+        return rslt;
+
+    settings.pwr_mode = BMM150_POWERMODE_NORMAL;
+    return bmm150_set_op_mode(&settings, &bmm150_dev);
+}
+
+static int8_t BMM150_Read(int16_t *x, int16_t *y, int16_t *z)
+{
+    struct bmm150_mag_data data;
+    int8_t rslt;
+
+    rslt = bmm150_read_mag_data(&data, &bmm150_dev);
+
+    if (rslt == BMM150_OK)
+    {
+        *x = data.x;
+        *y = data.y;
+        *z = data.z;
+    }
+
+    return rslt;
+}
+
+static void BMM150_UpdateHeading(void)
+{
+    if ((bmm150_x != BMM150_OVERFLOW_OUTPUT) &&
+        (bmm150_y != BMM150_OVERFLOW_OUTPUT))
+    {
+        bmm150_heading_deg =
+            atan2f((float)bmm150_y, (float)bmm150_x) * 57.2957795f;
+
+        if (bmm150_heading_deg < 0.0f)
+            bmm150_heading_deg += 360.0f;
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -345,7 +533,7 @@ static int8_t BMP580_Read(float *temperature_c, float *pressure_pa)
 int main(void)
 {
 
-  /* USER CODE BEGIN 1 */
+  /* USER CODEBEGIN 1 */
 
   /* USER CODE END 1 */
 
@@ -401,7 +589,12 @@ int main(void)
 
   bmp580_spi_error_stage = 0;
   bmp580_init_status = BMP580_Init();
+  bmm150_init_status = BMM150_Init();
 
+  if (bmm150_init_status != BMM150_OK)
+  {
+      Error_Handler();
+  }
   if (bmp580_init_status != BMP5_OK)
   {
       Error_Handler();
@@ -419,6 +612,21 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  bmp580_read_status = BMP580_Read(&bmp580_temperature_c, &bmp580_pressure_pa);
 
+	  if (bmp580_read_status == BMP5_OK)
+	  {
+	      bmp580_altitude_m = 44330.0f *(1.0f - powf(bmp580_pressure_pa /bmp580_pressure_ref_pa, 0.19029496f));
+	  }
+	  if (++bmm150_read_divider >= 5U)
+	  {
+	      bmm150_read_divider = 0U;
+
+	      bmm150_read_status = BMM150_Read(&bmm150_x, &bmm150_y, &bmm150_z);
+
+	      if (bmm150_read_status == BMM150_OK)
+	      {
+	          BMM150_UpdateHeading();
+	      }
+	  }
 	  /* Đặt breakpoint ở dòng trên để test */
 
 	  HAL_Delay(20);   /* 50 Hz */
