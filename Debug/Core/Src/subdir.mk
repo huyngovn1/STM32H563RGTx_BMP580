@@ -5,6 +5,7 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
+../Core/Src/bmm150.c \
 ../Core/Src/bmp5.c \
 ../Core/Src/bmp5_selftest.c \
 ../Core/Src/main.c \
@@ -15,6 +16,7 @@ C_SRCS += \
 ../Core/Src/system_stm32h5xx.c 
 
 C_DEPS += \
+./Core/Src/bmm150.d \
 ./Core/Src/bmp5.d \
 ./Core/Src/bmp5_selftest.d \
 ./Core/Src/main.d \
@@ -25,6 +27,7 @@ C_DEPS += \
 ./Core/Src/system_stm32h5xx.d 
 
 OBJS += \
+./Core/Src/bmm150.o \
 ./Core/Src/bmp5.o \
 ./Core/Src/bmp5_selftest.o \
 ./Core/Src/main.o \
@@ -42,7 +45,7 @@ Core/Src/%.o Core/Src/%.su Core/Src/%.cyclo: ../Core/Src/%.c Core/Src/subdir.mk
 clean: clean-Core-2f-Src
 
 clean-Core-2f-Src:
-	-$(RM) ./Core/Src/bmp5.cyclo ./Core/Src/bmp5.d ./Core/Src/bmp5.o ./Core/Src/bmp5.su ./Core/Src/bmp5_selftest.cyclo ./Core/Src/bmp5_selftest.d ./Core/Src/bmp5_selftest.o ./Core/Src/bmp5_selftest.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/stm32h5xx_hal_msp.cyclo ./Core/Src/stm32h5xx_hal_msp.d ./Core/Src/stm32h5xx_hal_msp.o ./Core/Src/stm32h5xx_hal_msp.su ./Core/Src/stm32h5xx_it.cyclo ./Core/Src/stm32h5xx_it.d ./Core/Src/stm32h5xx_it.o ./Core/Src/stm32h5xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32h5xx.cyclo ./Core/Src/system_stm32h5xx.d ./Core/Src/system_stm32h5xx.o ./Core/Src/system_stm32h5xx.su
+	-$(RM) ./Core/Src/bmm150.cyclo ./Core/Src/bmm150.d ./Core/Src/bmm150.o ./Core/Src/bmm150.su ./Core/Src/bmp5.cyclo ./Core/Src/bmp5.d ./Core/Src/bmp5.o ./Core/Src/bmp5.su ./Core/Src/bmp5_selftest.cyclo ./Core/Src/bmp5_selftest.d ./Core/Src/bmp5_selftest.o ./Core/Src/bmp5_selftest.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/stm32h5xx_hal_msp.cyclo ./Core/Src/stm32h5xx_hal_msp.d ./Core/Src/stm32h5xx_hal_msp.o ./Core/Src/stm32h5xx_hal_msp.su ./Core/Src/stm32h5xx_it.cyclo ./Core/Src/stm32h5xx_it.d ./Core/Src/stm32h5xx_it.o ./Core/Src/stm32h5xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32h5xx.cyclo ./Core/Src/system_stm32h5xx.d ./Core/Src/system_stm32h5xx.o ./Core/Src/system_stm32h5xx.su
 
 .PHONY: clean-Core-2f-Src
 

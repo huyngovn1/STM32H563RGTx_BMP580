@@ -54,7 +54,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Middlewares/ST/usbx/common/usbx_device_classes/inc/ux_device_class_cdc_acm.h \
  ../USBX/App/ux_device_descriptors.h ../USBX/Target/ux_stm32_config.h \
  ../Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32.h \
- ../Core/Inc/bmp5.h ../Core/Inc/bmp5_defs.h
+ ../Core/Inc/bmp5.h ../Core/Inc/bmp5_defs.h ../Core/Inc/bmm150.h \
+ ../Core/Inc/bmm150_defs.h
 ../Core/Inc/main.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h:
 ../Core/Inc/stm32h5xx_hal_conf.h:
@@ -117,3 +118,5 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32.h:
 ../Core/Inc/bmp5.h:
 ../Core/Inc/bmp5_defs.h:
+../Core/Inc/bmm150.h:
+../Core/Inc/bmm150_defs.h:
