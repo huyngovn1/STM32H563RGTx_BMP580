@@ -19,11 +19,12 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "app_usbx.h"
-#include "bmm150.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "bmp5.h"
 #include "math.h"
+#include "bmm150.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -69,8 +70,6 @@ static volatile uint8_t bmp580_spi_error_stage;
 static volatile uint8_t bmp580_spi_last_rx;
 static float bmp580_temperature_c;
 static float bmp580_pressure_pa;
-static float bmp580_altitude_m;
-static float bmp580_pressure_ref_pa = 101325.0f;
 static struct bmm150_dev bmm150_dev;
 static volatile int8_t bmm150_init_status;
 static volatile int8_t bmm150_read_status;
@@ -78,7 +77,8 @@ static int16_t bmm150_x;
 static int16_t bmm150_y;
 static int16_t bmm150_z;
 static float bmm150_heading_deg;
-static uint8_t bmm150_read_divider;
+static uint32_t bmp580_last_read_ms;
+static uint32_t bmm150_last_read_ms;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -143,13 +143,10 @@ static int8_t bmp580_spi_start(uint32_t bytes)
 {
     LL_SPI_Disable(SPI1);
     bmp580_spi_clear_flags();
-
     LL_SPI_SetTransferSize(SPI1, bytes);
-
     LL_GPIO_ResetOutputPin(CSB_GPIO_Port, CSB_Pin); /* CSB = 0 */
     LL_SPI_Enable(SPI1);
     LL_SPI_StartMasterTransfer(SPI1);
-
     return 0;
 }
 
@@ -187,7 +184,6 @@ static int8_t bmp580_spi_txrx_byte(uint8_t tx, uint8_t *rx)
 static int8_t bmp580_spi_finish(void)
 {
     uint32_t timeout = BMP580_SPI_TIMEOUT;
-
     while (!LL_SPI_IsActiveFlag_EOT(SPI1))
     {
         if (--timeout == 0U)
@@ -197,7 +193,6 @@ static int8_t bmp580_spi_finish(void)
             return -1;
         }
     }
-
     LL_GPIO_SetOutputPin(CSB_GPIO_Port, CSB_Pin); /* CSB = 1 */
     LL_SPI_ClearFlag_EOT(SPI1);
     LL_SPI_ClearFlag_TXTF(SPI1);
@@ -211,19 +206,12 @@ void *intf_ptr)
 {
     uint8_t dummy;
     uint32_t i;
-
     (void)intf_ptr;
-
-    if ((data == NULL) || (len == 0U))
-        return -1;
-
-    if (bmp580_spi_start(len + 1U) != 0)
-        return -1;
-
+    if ((data == NULL) || (len == 0U)) return -1;
+    if (bmp580_spi_start(len + 1U) != 0) return -1;
     if (bmp580_spi_txrx_byte(reg_addr, &dummy) != 0)
     {
-        bmp580_spi_abort();
-        return -1;
+        bmp580_spi_abort();return -1;
     }
 
     for (i = 0; i < len; i++)
@@ -242,21 +230,16 @@ static BMP5_INTF_RET_TYPE bmp580_spi_write(uint8_t reg_addr, const uint8_t *data
 {
     uint8_t dummy;
     uint32_t i;
-
     (void)intf_ptr;
-
     if ((data == NULL) || (len == 0U))
         return -1;
-
     if (bmp580_spi_start(len + 1U) != 0)
         return -1;
-
     if (bmp580_spi_txrx_byte(reg_addr, &dummy) != 0)
     {
         bmp580_spi_abort();
         return -1;
     }
-
     for (i = 0; i < len; i++)
     {
         if (bmp580_spi_txrx_byte(data[i], &dummy) != 0)
@@ -265,7 +248,6 @@ static BMP5_INTF_RET_TYPE bmp580_spi_write(uint8_t reg_addr, const uint8_t *data
             return -1;
         }
     }
-
     return bmp580_spi_finish();
 }
 
@@ -276,22 +258,17 @@ static void bmp580_delay_us(uint32_t period, void *intf_ptr)
     if (period > 0U)
         HAL_Delay((period + 999U) / 1000U);
 }
-
 static int8_t BMP580_Init(void)
 {
     int8_t rslt;
     struct bmp5_iir_config iir_cfg = {0};
-
     LL_GPIO_SetOutputPin(CSB_GPIO_Port, CSB_Pin);
-
     bmp580_dev.intf = BMP5_SPI_INTF;
     bmp580_dev.read = bmp580_spi_read;
     bmp580_dev.write = bmp580_spi_write;
     bmp580_dev.delay_us = bmp580_delay_us;
     bmp580_dev.intf_ptr = NULL;
-
     rslt = bmp5_init(&bmp580_dev);
-
     if (rslt == BMP5_E_NVM_NOT_READY)
     {
         uint8_t chip_id = 0;
@@ -396,10 +373,7 @@ static int8_t bmm150_spi_finish(void)
     return BMM150_OK;
 }
 
-static BMM150_INTF_RET_TYPE bmm150_spi_read(uint8_t reg_addr,
-                                             uint8_t *data,
-                                             uint32_t len,
-                                             void *intf_ptr)
+static BMM150_INTF_RET_TYPE bmm150_spi_read(uint8_t reg_addr, uint8_t *data, uint32_t len, void *intf_ptr)
 {
     uint8_t dummy;
     uint32_t i;
@@ -431,10 +405,7 @@ static BMM150_INTF_RET_TYPE bmm150_spi_read(uint8_t reg_addr,
     return bmm150_spi_finish();
 }
 
-static BMM150_INTF_RET_TYPE bmm150_spi_write(uint8_t reg_addr,
-                                              const uint8_t *data,
-                                              uint32_t len,
-                                              void *intf_ptr)
+static BMM150_INTF_RET_TYPE bmm150_spi_write(uint8_t reg_addr, const uint8_t *data, uint32_t len, void *intf_ptr)
 {
     uint8_t dummy;
     uint32_t i;
@@ -533,7 +504,7 @@ static void BMM150_UpdateHeading(void)
 int main(void)
 {
 
-  /* USER CODEBEGIN 1 */
+  /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
 
@@ -575,7 +546,7 @@ int main(void)
   MX_FDCAN1_Init();
   MX_TIM8_Init();
   MX_UART7_Init();
- // MX_USBX_Init();
+//  MX_USBX_Init();
   MX_USART6_UART_Init();
   MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
@@ -608,28 +579,25 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
-	  bmp580_read_status = BMP580_Read(&bmp580_temperature_c, &bmp580_pressure_pa);
+	  uint32_t now_ms = HAL_GetTick();
 
-	  if (bmp580_read_status == BMP5_OK)
+	  /* BMP580: đọc 50 Hz */
+	  if ((uint32_t)(now_ms - bmp580_last_read_ms) >= 20U)
 	  {
-	      bmp580_altitude_m = 44330.0f *(1.0f - powf(bmp580_pressure_pa /bmp580_pressure_ref_pa, 0.19029496f));
+	      bmp580_last_read_ms = now_ms;
+	      bmp580_read_status = BMP580_Read(&bmp580_temperature_c, &bmp580_pressure_pa);
 	  }
-	  if (++bmm150_read_divider >= 5U)
+	  /* BMM150: đọc 10 Hz, đúng ODR Regular mode */
+	  if ((uint32_t)(now_ms - bmm150_last_read_ms) >= 100U)
 	  {
-	      bmm150_read_divider = 0U;
-
+	      bmm150_last_read_ms = now_ms;
 	      bmm150_read_status = BMM150_Read(&bmm150_x, &bmm150_y, &bmm150_z);
-
 	      if (bmm150_read_status == BMM150_OK)
 	      {
 	          BMM150_UpdateHeading();
 	      }
 	  }
-	  /* Đặt breakpoint ở dòng trên để test */
-
-	  HAL_Delay(20);   /* 50 Hz */
   }
   /* USER CODE END 3 */
 }

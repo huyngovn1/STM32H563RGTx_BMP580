@@ -304,9 +304,7 @@ int8_t bmm150_set_presetmode(struct bmm150_settings *settings, struct bmm150_dev
  * @retval >0 -> Warning
  * @retval <0 -> Fail
  */
-int8_t bmm150_set_sensor_settings(uint16_t desired_settings,
-                                  const struct bmm150_settings *settings,
-                                  struct bmm150_dev *dev);
+int8_t bmm150_set_sensor_settings(uint16_t desired_settings, const struct bmm150_settings *settings,struct bmm150_dev *dev);
 
 /*!
  * \ingroup bmm150ApiSensorSettings
